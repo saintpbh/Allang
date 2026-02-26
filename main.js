@@ -1,22 +1,15 @@
 import * as THREE from 'three';
 import { Allang } from './Allang.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { MemoryManager } from './MemoryManager.js';
 
 // ─── API Key: localStorage > .env fallback ───
 function getApiKey() {
     return localStorage.getItem('allang_api_key') || import.meta.env.VITE_GEMINI_API_KEY || '';
 }
 
-function createModel(apiKey) {
-    if (!apiKey) return null;
-    const genAI = new GoogleGenerativeAI(apiKey);
-    return genAI.getGenerativeModel({
-        model: "gemini-flash-latest",
-        systemInstruction: SYSTEM_PROMPT
-    });
-}
-
-const SYSTEM_PROMPT = `
+// ─── Base System Prompt (memory context appended dynamically) ───
+const BASE_SYSTEM_PROMPT = `
 당신은 윈도우용 AI 친구 '알랑'의 두뇌입니다. 사용자의 입력을 분석하여 다음 JSON 형식으로만 응답하세요.
 JSON 응답 구조:
 { "action": "명령어", "color_hex": "#색상코드", "message": "알랑의 대사" }
@@ -39,8 +32,12 @@ JSON 응답 구조:
 - 인사하기: 기쁨_인사_중_짧게
 - 조용히 속삭임: 평온_속삭임_약_보통
 
+중요: 기억 컨텍스트가 주어지면 사용자의 이름을 부르고, 과거 대화를 자연스럽게 참조하세요.
 반드시 JSON 외에 다른 설명은 하지 마세요.
 `;
+
+// ─── Memory Classifier Prompt ───
+const CLASSIFIER_SYSTEM = `당신은 대화 내용에서 기억할 정보를 추출하는 분류기입니다. JSON 배열만 출력하세요.`;
 
 class App {
     constructor() {
@@ -64,10 +61,12 @@ class App {
         this.allang = new Allang(this.scene);
         this.clock = new THREE.Clock();
 
+        // Memory system
+        this.memory = new MemoryManager();
+
         // API setup
         this.apiKey = getApiKey();
-        this.model = createModel(this.apiKey);
-        this.chat = this.model ? this.model.startChat() : null;
+        this._initModels();
 
         // Raycaster for petting
         this.raycaster = new THREE.Raycaster();
@@ -80,14 +79,45 @@ class App {
         this.animate();
     }
 
+    // ─── Create Models with Memory Context ───
+    _initModels() {
+        if (!this.apiKey) {
+            this.chat = null;
+            this.classifierChat = null;
+            return;
+        }
+        const genAI = new GoogleGenerativeAI(this.apiKey);
+
+        // Main conversation model
+        this.mainModel = genAI.getGenerativeModel({
+            model: "gemini-flash-latest",
+            systemInstruction: BASE_SYSTEM_PROMPT
+        });
+        this.chat = this.mainModel.startChat();
+
+        // Classifier model (lightweight, separate session)
+        this.classifierModel = genAI.getGenerativeModel({
+            model: "gemini-flash-latest",
+            systemInstruction: CLASSIFIER_SYSTEM
+        });
+        this.classifierChat = this.classifierModel.startChat();
+    }
+
     // ─── Settings Modal ───
     initSettings() {
         const modal = document.querySelector('#settings-modal');
         const openBtn = document.querySelector('#settings-btn');
         const closeBtn = document.querySelector('#settings-close-btn');
         const saveBtn = document.querySelector('#settings-save-btn');
-        const input = document.querySelector('#api-key-input');
+        const apiInput = document.querySelector('#api-key-input');
         const status = document.querySelector('#api-status');
+
+        // Profile inputs
+        const nameInput = document.querySelector('#profile-name');
+        const birthdayInput = document.querySelector('#profile-birthday');
+        const likesInput = document.querySelector('#profile-likes');
+        const dislikesInput = document.querySelector('#profile-dislikes');
+        const resetMemBtn = document.querySelector('#reset-memory-btn');
 
         const updateStatus = () => {
             if (this.apiKey) {
@@ -99,9 +129,18 @@ class App {
             }
         };
 
+        const loadProfile = () => {
+            const p = this.memory.getProfile();
+            if (nameInput) nameInput.value = p.name || '';
+            if (birthdayInput) birthdayInput.value = p.birthday || '';
+            if (likesInput) likesInput.value = (p.likes || []).join(', ');
+            if (dislikesInput) dislikesInput.value = (p.dislikes || []).join(', ');
+        };
+
         openBtn.addEventListener('click', () => {
-            input.value = localStorage.getItem('allang_api_key') || '';
+            apiInput.value = localStorage.getItem('allang_api_key') || '';
             updateStatus();
+            loadProfile();
             modal.style.display = 'flex';
         });
 
@@ -114,28 +153,52 @@ class App {
         });
 
         saveBtn.addEventListener('click', () => {
-            const newKey = input.value.trim();
+            // Save API key
+            const newKey = apiInput.value.trim();
             if (newKey) {
                 localStorage.setItem('allang_api_key', newKey);
                 this.apiKey = newKey;
-                this.model = createModel(newKey);
-                this.chat = this.model.startChat();
-                status.textContent = '✅ 저장 완료! API 키가 적용되었습니다.';
+                this._initModels();
+                status.textContent = '✅ 저장 완료!';
                 status.className = 'api-status connected';
             } else {
                 localStorage.removeItem('allang_api_key');
-                this.apiKey = getApiKey(); // fall back to .env
-                this.model = createModel(this.apiKey);
-                this.chat = this.model ? this.model.startChat() : null;
+                this.apiKey = getApiKey();
+                this._initModels();
                 updateStatus();
             }
+
+            // Save profile
+            const profile = this.memory.getProfile();
+            if (nameInput) profile.name = nameInput.value.trim() || null;
+            if (birthdayInput) profile.birthday = birthdayInput.value.trim() || null;
+            if (likesInput) {
+                profile.likes = likesInput.value.split(',').map(s => s.trim()).filter(Boolean);
+            }
+            if (dislikesInput) {
+                profile.dislikes = dislikesInput.value.split(',').map(s => s.trim()).filter(Boolean);
+            }
+            this.memory.saveProfile(profile);
         });
+
+        // Reset memory button
+        if (resetMemBtn) {
+            resetMemBtn.addEventListener('click', async () => {
+                if (confirm('모든 기억을 초기화할까요? (프로필 + 에피소드)')) {
+                    localStorage.removeItem('allang_user_profile');
+                    await this.memory.clearAllEpisodes();
+                    loadProfile();
+                    status.textContent = '🗑️ 기억이 초기화되었습니다.';
+                }
+            });
+        }
 
         // Show warning if no API key at startup
         if (!this.apiKey) {
             setTimeout(() => {
                 modal.style.display = 'flex';
                 updateStatus();
+                loadProfile();
             }, 1000);
         }
     }
@@ -228,13 +291,24 @@ class App {
             }
 
             try {
-                const result = await this.chat.sendMessage(text);
+                // Build memory context and prepend to message
+                const memCtx = await this.memory.buildMemoryContext();
+                const augmentedMessage = memCtx
+                    ? `${memCtx}\n\n[사용자 메시지]\n${text}`
+                    : text;
+
+                const result = await this.chat.sendMessage(augmentedMessage);
                 const responseText = result.response.text();
                 const cleanJson = responseText.replace(/```json|```/g, '').trim();
                 const data = JSON.parse(cleanJson);
 
                 this.addMessage(data.message, 'bot');
                 this.allang.applyPreset(data.action, data.color_hex);
+
+                // Classify and store memories (async, non-blocking)
+                this.memory.classifyAndStore(text, data.message, this.classifierChat)
+                    .catch(err => console.warn('Memory save failed:', err));
+
             } catch (error) {
                 console.error("Gemini API Error:", error);
                 this.addMessage("앗, 잠시 알랑이 생각에 잠겼어요. 다시 말씀해 주실래요?", 'bot');

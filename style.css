@@ -307,3 +307,58 @@ header h1 span {
     opacity: 0.85;
     transform: translateY(-1px);
 }
+
+/* ─── Profile & Memory Styles ─── */
+.modal-content {
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.modal-content::-webkit-scrollbar {
+    width: 4px;
+}
+
+.modal-content::-webkit-scrollbar-thumb {
+    background: var(--glass-border);
+    border-radius: 10px;
+}
+
+.setting-divider {
+    border: none;
+    border-top: 1px solid var(--glass-border);
+    margin: 0.25rem 0;
+}
+
+.setting-section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--primary-glow);
+}
+
+.setting-hint-inline {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.setting-group input[type="date"] {
+    color-scheme: dark;
+}
+
+.btn-danger {
+    width: 100%;
+    padding: 0.5rem;
+    margin-top: 0.5rem;
+    background: rgba(248, 113, 113, 0.1);
+    color: #f87171;
+    border: 1px solid rgba(248, 113, 113, 0.2);
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-danger:hover {
+    background: rgba(248, 113, 113, 0.2);
+}
