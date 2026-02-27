@@ -72,6 +72,14 @@ class App {
         this.renderer.compile(this.scene, this.camera);
         this.clock = new THREE.Clock();
 
+        // Essential UI (Always init first)
+        try {
+            this.initSettings();
+            this.initResize();
+        } catch (e) {
+            console.error("UI Init Error:", e);
+        }
+
         // Subsystems
         this.memory = new MemoryManager();
         this.locationMgr = new LocationManager();
@@ -81,38 +89,21 @@ class App {
 
         this.allang.soundMgr = this.soundMgr;
 
-        // UI Elements
-        this.chatInput = document.querySelector('#chat-input');
-        this.sendBtn = document.querySelector('#send-btn');
-        this.messagesCont = document.querySelector('#chat-messages');
-
-        // Zen Mode State (v10.0)
-        this.isZenMode = false;
-        this.zenTimer = null;
-        this.uiOverlay = document.querySelector('.ui-overlay');
-
         // API setup
         this.apiKey = getApiKey();
         this.isInitializing = true;
         this._initModels().finally(() => {
             this.isInitializing = false;
         });
-        this._initAwareness();
 
-        // Setup interaction
+        // Other interactive systems
+        this._initAwareness();
         this.initInteraction();
         this._initProactive();
-
-        this._lastUserActive = 0; // Time of last user message
-
-        // Raycaster for petting
-        this.raycaster = new THREE.Raycaster();
-        this.mouse = new THREE.Vector2();
-
         this.initChat();
         this.initPetting();
-        this.initResize();
-        this.initSettings();
+
+        this._lastUserActive = 0;
         this.animate();
     }
 

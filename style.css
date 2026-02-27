@@ -48,6 +48,23 @@ body {
     flex-direction: column;
     padding: 2rem;
     pointer-events: none;
+    /* Let clicks pass through to canvas by default */
+    transition: opacity 1.5s ease;
+}
+
+/* Children that need clicks */
+.ui-overlay>* {
+    pointer-events: auto;
+}
+
+/* v10.0 Zen Mode */
+.ui-overlay.zen-hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.ui-overlay.zen-hidden * {
+    pointer-events: none;
 }
 
 header {
