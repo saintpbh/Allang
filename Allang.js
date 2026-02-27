@@ -29,6 +29,46 @@ export class Allang {
         this.initParticles();  // Layer 4: Floating Particles
         this.initFace();       // Dynamic Face Texture
         this.initShakeDetection(); // Shake → Wobble
+
+        // Solo Play Actions (v8.0)
+        this.SOLO_ACTIONS = {
+            PLAYFUL: [
+                { cmd: '기쁨_회전_강_보통', color: '#ffcc00' },
+                { cmd: '기쁨_흔들림_중_짧게', color: '#ffeb3b' },
+                { cmd: '기쁨_흔들림_강_길게', color: '#fdd835' },
+                { cmd: '평온_확장_중_길게', color: '#ffc107' },
+                { cmd: '기쁨_떨림_약_보통', color: '#ffee58' },
+                { cmd: '기쁨_기본_강_보통', color: '#fff176' },
+                { cmd: '기쁨_움츠림_약_중', color: '#fff59d' },
+                { cmd: '기쁨_회전_강_짧게', color: '#fff9c4' },
+                { cmd: '평온_흔들림_약_길게', color: '#fbc02d' },
+                { cmd: '기쁨_인사_중_보통', color: '#f9a825' }
+            ],
+            CURIOUS: [
+                { cmd: '궁금함_응시_강_길게', color: '#ffb300' },
+                { cmd: '궁금함_응시_약_보통', color: '#ffa000' },
+                { cmd: '궁금함_응시_중_길게', color: '#ff8f00' },
+                { cmd: '놀람_확장_강_짧게', color: '#ff6f00' },
+                { cmd: '궁금함_확장_약_길게', color: '#ffd54f' },
+                { cmd: '궁금함_응시_중_짧게', color: '#ffca28' },
+                { cmd: '궁금함_기본_약_보통', color: '#ffb300' },
+                { cmd: '놀람_응시_중_짧게', color: '#ffa000' },
+                { cmd: '놀람_떨림_약_보통', color: '#ff8f00' },
+                { cmd: '궁금함_기본_중_길게', color: '#ff6f00' }
+            ],
+            RELAXED: [
+                { cmd: '피곤_하품_중_길게', color: '#fff176' },
+                { cmd: '피곤_기본_약_길게', color: '#fff59d' },
+                { cmd: '평온_확장_약_길게', color: '#fff9c4' },
+                { cmd: '슬픔_움츠림_약_보통', color: '#fbc02d' },
+                { cmd: '평온_응시_약_길게', color: '#f9a825' },
+                { cmd: '슬픔_움츠림_중_길게', color: '#ffb300' },
+                { cmd: '평온_떨림_약_길게', color: '#ffa000' },
+                { cmd: '피곤_회전_약_길게', color: '#ff8f00' },
+                { cmd: '기쁨_속삭임_약_보통', color: '#ff6f00' },
+                { cmd: '평온_기본_약_길게', color: '#ffd54f' }
+            ]
+        };
     }
 
     // ─── Layer 1: Inner Core ───
@@ -371,12 +411,68 @@ export class Allang {
         tl.to(this.particles.material, { size: 0.04, opacity: 0.8, duration: 1.5 }, duration);
     }
 
+    triggerSoloPlay() {
+        if (this._isDoingIdleBehavior || this._isPetting || (Date.now() / 1000 - this._lastInteraction < 5)) return;
+
+        // Pick a random category and then a random action
+        const categories = Object.keys(this.SOLO_ACTIONS);
+        const cat = categories[Math.floor(Math.random() * categories.length)];
+        const actions = this.SOLO_ACTIONS[cat];
+        const action = actions[Math.floor(Math.random() * actions.length)];
+
+        console.log(`[SoloPlay] Category: ${cat}, Action: ${action.cmd}`);
+        this.applyPreset(action.cmd, action.color);
+    }
+
     // ─── Petting System (Multi-Phase Reactions) ───
     startPet() {
         this._isPetting = true;
         this._petDuration = 0;
         this._petPhase = 'pleased';
-        this._petPhaseChanged = true;
+        this._petPhaseChanged = false;
+        this._petDuration = 0;
+
+        // Solo Play Actions (v8.0)
+        this.SOLO_ACTIONS = {
+            PLAYFUL: [
+                { cmd: '기쁨_회전_강_보통', color: '#ffcc00' },
+                { cmd: '기쁨_흔들림_중_짧게', color: '#ffeb3b' },
+                { cmd: '기쁨_흔들림_강_길게', color: '#fdd835' },
+                { cmd: '평온_확장_중_길게', color: '#ffc107' },
+                { cmd: '기쁨_떨림_약_보통', color: '#ffee58' },
+                { cmd: '기쁨_기본_강_보통', color: '#fff176' },
+                { cmd: '기쁨_움츠림_약_중', color: '#fff59d' },
+                { cmd: '기쁨_회전_강_짧게', color: '#fff9c4' },
+                { cmd: '평온_흔들림_약_길게', color: '#fbc02d' },
+                { cmd: '기쁨_인사_중_보통', color: '#f9a825' }
+            ],
+            CURIOUS: [
+                { cmd: '궁금함_응시_강_길게', color: '#ffb300' },
+                { cmd: '궁금함_응시_약_보통', color: '#ffa000' },
+                { cmd: '궁금함_응시_중_길게', color: '#ff8f00' },
+                { cmd: '놀람_확장_강_짧게', color: '#ff6f00' },
+                { cmd: '궁금함_확장_약_길게', color: '#ffd54f' },
+                { cmd: '궁금함_응시_중_짧게', color: '#ffca28' },
+                { cmd: '궁금함_기본_약_보통', color: '#ffb300' },
+                { cmd: '놀람_응시_중_짧게', color: '#ffa000' },
+                { cmd: '놀람_떨림_약_보통', color: '#ff8f00' },
+                { cmd: '궁금함_기본_중_길게', color: '#ff6f00' }
+            ],
+            RELAXED: [
+                { cmd: '피곤_하품_중_길게', color: '#fff176' },
+                { cmd: '피곤_기본_약_길게', color: '#fff59d' },
+                { cmd: '평온_확장_약_길게', color: '#fff9c4' },
+                { cmd: '슬픔_움츠림_약_보통', color: '#fbc02d' },
+                { cmd: '평온_응시_약_길게', color: '#f9a825' },
+                { cmd: '슬픔_움츠림_중_길게', color: '#ffb300' },
+                { cmd: '평온_떨림_약_길게', color: '#ffa000' },
+                { cmd: '피곤_회전_약_길게', color: '#ff8f00' },
+                { cmd: '기쁨_속삭임_약_보통', color: '#ff6f00' },
+                { cmd: '평온_기본_약_길게', color: '#ffd54f' }
+            ]
+        };
+
+        this.init();
         this._origColor = this.bodyMaterial.uniforms.uColor.value.clone();
         this.drawFace('happy');
         gsap.to(this.bodyMaterial.uniforms.uGlow, { value: 0.5, duration: 0.5 });

@@ -471,9 +471,16 @@ class App {
         if (this.visionMgr) this.visionMgr.update(time);
         if (this.proactiveMgr) this.proactiveMgr.update(time);
 
-        // Boredom check: If user hasn't talked for 2 mins (120s)
-        if (time - this._lastUserActive > 120 && this.allang.currentExpression === 'default') {
-            this.allang.drawFace('tired');
+        // Boredom/Solo Play check: If user hasn't talked for 2 mins (120s)
+        if (time - this._lastUserActive > 120) {
+            if (this.allang.currentExpression === 'default') {
+                this.allang.drawFace('tired');
+            }
+
+            // Trigger a random solo play periodically while bored
+            if (Math.floor(time) % 15 === 0 && !this.allang._isDoingIdleBehavior) {
+                this.allang.triggerSoloPlay();
+            }
         }
 
         this.allang.update(time);
