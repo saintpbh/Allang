@@ -21,6 +21,7 @@ export class Allang {
         this._eyeTarget = { x: 0.5, y: 0.5 };
         this._isAway = false;
         this._awayStartTime = 0;
+        this._lastBoredActionTime = 0; // v9.1: Debounce bored triggers
 
         // Roaming state (v9.0)
         this.targetPos = new THREE.Vector3(0, 0.5, 0); // Default slightly above center
@@ -358,10 +359,12 @@ export class Allang {
                 ctx.fillText('?', w * 0.35 + ox, h * 0.42 + oy);
                 ctx.fillText('+', w * 0.65 + ox, h * 0.42 + oy);
                 break;
-            case 'tired': // ~ ~
-                ctx.font = 'bold 55px Outfit, sans-serif';
-                ctx.fillText('~', w * 0.35 + ox, h * 0.45 + oy);
-                ctx.fillText('~', w * 0.65 + ox, h * 0.45 + oy);
+            case 'tired': // - -
+                ctx.font = 'bold 60px Outfit, sans-serif';
+                ctx.fillText('-', w * 0.35 + ox, h * 0.42 + oy);
+                ctx.fillText('-', w * 0.65 + ox, h * 0.42 + oy);
+                ctx.font = '30px Outfit, sans-serif';
+                ctx.fillText('~', w * 0.5, h * 0.55); // sleepy mouth
                 break;
             case 'waiting': // puppy waiting (◕_◕)
                 ctx.font = 'bold 55px Outfit, sans-serif';
@@ -668,13 +671,14 @@ export class Allang {
         this.velocity.add(force).multiplyScalar(damping);
         this.group.position.add(this.velocity);
 
-        // Tilt body based on velocity (Squash & Stretch feel)
-        this.group.rotation.z = -this.velocity.x * 2.0;
-        this.group.rotation.x = this.velocity.y * 1.5;
+        // Tilt body based on velocity
+        this.group.rotation.z = -this.velocity.x * 1.5;
+        this.group.rotation.x = this.velocity.y * 1.0;
 
         const speed = this.velocity.length();
-        const squash = 1.0 + speed * 0.5;
-        this.body.scale.set(1 / squash, squash, 1 / squash);
+        const squash = 1.0 + speed * 0.3; // More subtle squash for v9.1
+        // Apply squash to the whole group so children (face) follow
+        this.group.scale.set(1 / squash, squash, 1 / squash);
 
         // Boredom / Away Face
         if (this._isAway) {

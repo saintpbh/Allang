@@ -484,11 +484,13 @@ class App {
             }
 
             // Trigger a random solo play or roaming periodically while bored
-            if (Math.floor(time) % 15 === 0 && !this.allang._isDoingIdleBehavior) {
+            // v9.1 Fix: Ensure it only triggers ONCE at the interval
+            if (time - this.allang._lastBoredActionTime > 15 && !this.allang._isDoingIdleBehavior) {
+                this.allang._lastBoredActionTime = time;
                 if (Math.random() > 0.4) {
                     this.allang.triggerSoloPlay();
                 } else {
-                    this.allang.roamRandomly(0.8);
+                    this.allang.roamRandomly(0.6); // Slightly calmer roaming
                 }
             }
         }
