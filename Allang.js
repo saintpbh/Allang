@@ -56,8 +56,8 @@ export class Allang {
                 uWobble: { value: 0.08 },
                 uGlow: { value: 0.4 },
                 uBreath: { value: 0.0 },
-                uPetPoint: { value: new THREE.Vector3(0, 0, 1) },
-                uPetStrength: { value: 0.0 }
+                uPetStrength: { value: 0.0 },
+                uRecall: { value: 0.0 }
             },
             vertexShader: /* glsl */ `
                 varying vec2 vUv;
@@ -105,7 +105,7 @@ export class Allang {
                 uniform vec3 uColor;
                 uniform vec3 uColor2;
                 uniform float uGlow;
-                uniform float uTime;
+                uniform float uRecall;
 
                 // Hash for particles
                 float hash(vec3 p) {
@@ -113,8 +113,18 @@ export class Allang {
                 }
 
                 void main() {
-                    // Fresnel (rim glow)
-                    float fresnel = pow(1.0 - max(dot(vViewDir, vNormal), 0.0), 3.0);
+                    vec3 baseNormal = normalize(vNormal);
+                    float fresnel = pow(1.0 - dot(baseNormal, vViewDir), 2.5);
+                    
+                    // Base gradient
+                    vec3 color = mix(uColor, uColor2, vUv.y);
+
+                    // Recall effect: shift towards cyan/purple hue
+                    vec3 recallColor = vec3(0.2, 0.8, 0.9); // Cyan
+                    color = mix(color, recallColor, uRecall * 0.7);
+                    
+                    // Interior depth glow
+                    float internalGlow = pow(1.0 - dot(baseNormal, vec3(0,0,1)), 3.0) * 0.4;
 
                     // Subsurface scattering simulation
                     float sss = pow(max(dot(vNormal, vec3(0.0, 1.0, 0.5)), 0.0), 2.0) * 0.3;
@@ -140,11 +150,11 @@ export class Allang {
                     }
 
                     // Compose final color
-                    vec3 baseCol = mix(uColor, uColor2, vUv.y * 0.5 + 0.25);
-                    vec3 rimCol = mix(baseCol, vec3(1.0, 0.95, 0.8), fresnel * uGlow);
-                    vec3 finalCol = rimCol + sss * baseCol;
+                    vec3 finalCol = color + sss * color;
+                    finalCol += internalGlow * color;
                     finalCol += iriColor * fresnel * 0.15;           // iridescence
                     finalCol += sparkle * vec3(1.0, 0.98, 0.9) * 1.5; // sparkles
+                    finalCol = mix(finalCol, vec3(1.0, 0.95, 0.8), fresnel * uGlow); // Rim glow
 
                     // Opacity: more translucent at edges
                     float alpha = mix(0.92, 0.5, fresnel * 0.6);
@@ -341,6 +351,22 @@ export class Allang {
         this.drawFace('waiting');
         gsap.to(this.body.scale, { x: 0.95, y: 1.05, z: 0.95, duration: 1.2, ease: "power1.inOut" });
         gsap.to(this.group.rotation, { x: -0.1, duration: 1.5 }); // looking up/forward
+    }
+
+    triggerRecallEffect(duration = 2.0) {
+        const tl = gsap.timeline();
+
+        // Flash glow and shift color
+        tl.to(this.bodyMaterial.uniforms.uRecall, { value: 1.0, duration: 0.4, ease: "power2.out" });
+        tl.to(this.bodyMaterial.uniforms.uGlow, { value: 0.8, duration: 0.4 }, 0);
+
+        // Particles intensify
+        tl.to(this.particles.material, { size: 0.08, opacity: 1.0, duration: 0.4 }, 0);
+
+        // Revert
+        tl.to(this.bodyMaterial.uniforms.uRecall, { value: 0.0, duration: 1.5, ease: "power1.inOut" }, duration);
+        tl.to(this.bodyMaterial.uniforms.uGlow, { value: 0.4, duration: 1.2 }, duration);
+        tl.to(this.particles.material, { size: 0.04, opacity: 0.8, duration: 1.5 }, duration);
     }
 
     // ─── Petting System (Multi-Phase Reactions) ───

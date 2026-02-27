@@ -73,6 +73,8 @@ class App {
         this._initModels();
         this._initAwareness();
 
+        this._lastUserActive = 0; // Time of last user message
+
         // Raycaster for petting
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
@@ -314,6 +316,11 @@ class App {
             const text = input.value.trim();
             if (!text) return;
 
+            this._lastUserActive = this.clock.getElapsedTime();
+            if (this.allang.currentExpression === 'tired') {
+                this.allang.drawFace('default');
+            }
+
             this.addMessage(text, 'user');
             input.value = '';
 
@@ -326,6 +333,11 @@ class App {
                 // Build memory and environment context
                 const memCtx = await this.memory.buildMemoryContext();
                 const envCtx = this.locationMgr.getContextString();
+
+                // Trigger visual recall effect if there's significant memory context
+                if (memCtx && memCtx.length > 50) {
+                    this.allang.triggerRecallEffect(1.5);
+                }
 
                 const augmentedMessage = `${memCtx}\n${envCtx}\n\n[사용자 메시지]\n${text}`;
 
@@ -366,7 +378,17 @@ class App {
         requestAnimationFrame(this.animate.bind(this));
         const time = this.clock.getElapsedTime();
 
+        // Update weather periodically (every 30 mins)
+        if (Math.floor(time) % 1800 === 0 && Math.floor(time) !== 0) {
+            this.locationMgr.updateWeather();
+        }
+
         if (this.visionMgr) this.visionMgr.update(time);
+
+        // Boredom check: If user hasn't talked for 2 mins (120s)
+        if (time - this._lastUserActive > 120 && this.allang.currentExpression === 'default') {
+            this.allang.drawFace('tired');
+        }
 
         this.allang.update(time);
         this.renderer.render(this.scene, this.camera);
