@@ -4,6 +4,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { MemoryManager } from './MemoryManager.js';
 import { LocationManager } from './LocationManager.js';
 import { VisionManager } from './VisionManager.js';
+import { ProactiveManager } from './ProactiveManager.js';
 
 // ─── API Key: localStorage > .env fallback ───
 function getApiKey() {
@@ -67,11 +68,13 @@ class App {
         this.memory = new MemoryManager();
         this.locationMgr = new LocationManager();
         this.visionMgr = new VisionManager(this.allang);
+        this.proactiveMgr = new ProactiveManager(this.allang, this.locationMgr, this.visionMgr, this.memory);
 
         // API setup
         this.apiKey = getApiKey();
         this._initModels();
         this._initAwareness();
+        this._initProactive();
 
         this._lastUserActive = 0; // Time of last user message
 
@@ -116,6 +119,39 @@ class App {
 
         if (locEnabled) await this.locationMgr.init();
         if (visEnabled) await this.visionMgr.start();
+    }
+
+    _initProactive() {
+        this.proactiveMgr.addEventListener('proactive-trigger', async (e) => {
+            if (this.isGenerating || !this.chat) return;
+
+            const reason = e.detail.reason;
+            console.log(`AI initiating conversation: ${reason}`);
+
+            // Trigger visual cue
+            this.allang.triggerRecallEffect(1.0);
+
+            try {
+                const memCtx = await this.memory.buildMemoryContext();
+                const envCtx = this.locationMgr.getContextString();
+
+                const proactivePrompt = ` 당신은 Allang(알랑)입니다. 지금 ${reason} 상황입니다. 
+                사용자에게 먼저 대화의 물꼬를 트는 한 문장의 짧고 다정한 말을 하세요.
+                상황에 따라 위치, 날씨, 또는 기억하고 있는 사용자의 취향을 언급하면 더 좋습니다.
+                반드시 한 문장으로 대답하세요. JSON 형식이 아닌 일반 텍스트로 답하세요.
+                
+                ${memCtx}
+                ${envCtx}`;
+
+                const result = await this.chat.sendMessage(proactivePrompt);
+                const text = result.response.text();
+
+                this.addMessage(text, 'allang');
+                this.allang.drawFace('happy'); // Friendly face after speaking
+            } catch (err) {
+                console.error('Proactive message generation failed:', err);
+            }
+        });
     }
 
     // ─── Settings Modal ───
@@ -317,6 +353,7 @@ class App {
             if (!text) return;
 
             this._lastUserActive = this.clock.getElapsedTime();
+            this.proactiveMgr.resetUserTimer();
             if (this.allang.currentExpression === 'tired') {
                 this.allang.drawFace('default');
             }
@@ -384,6 +421,7 @@ class App {
         }
 
         if (this.visionMgr) this.visionMgr.update(time);
+        if (this.proactiveMgr) this.proactiveMgr.update(time);
 
         // Boredom check: If user hasn't talked for 2 mins (120s)
         if (time - this._lastUserActive > 120 && this.allang.currentExpression === 'default') {
