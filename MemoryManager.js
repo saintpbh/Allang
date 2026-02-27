@@ -17,6 +17,8 @@ const DEFAULT_PROFILE = {
     dislikes: [],
     values: [],
     relationships: [],
+    office_location: null,
+    home_location: null,
     memo: ''
 };
 
@@ -188,7 +190,7 @@ export class MemoryManager {
 AI 응답: "${aiResponse}"
 
 규칙:
-- long-term: 변하지 않는 핵심 정보 (이름, 생일, 취향, 가치관, 관계)
+- long-term: 변하지 않는 핵심 정보 (이름, 생일, 취향, 가치관, 관계, home_location, office_location)
 - mid-term: 며칠간 유효한 활동/상태 (여행, 프로젝트, 기분 상태)
 - skip: 저장할 필요 없는 일상적 대화
 
@@ -232,6 +234,8 @@ AI 응답: "${aiResponse}"
         if (profile.dislikes.length > 0) context += `- 싫어하는 것: ${profile.dislikes.join(', ')}\n`;
         if (profile.values.length > 0) context += `- 가치관/성격: ${profile.values.join(', ')}\n`;
         if (profile.relationships.length > 0) context += `- 관계: ${profile.relationships.join(', ')}\n`;
+        if (profile.office_location) context += `- 주 업무지: ${profile.office_location}\n`;
+        if (profile.home_location) context += `- 거주지: ${profile.home_location}\n`;
         if (profile.memo) context += `- 메모: ${profile.memo}\n`;
 
         // Mid-term

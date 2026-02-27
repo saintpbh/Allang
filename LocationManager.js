@@ -7,8 +7,24 @@ export class LocationManager {
     }
 
     async init() {
+        // 1. First, try High-Precision GPS (browser Geolocation)
+        const gps = await this.getGPS();
+        if (gps) {
+            this.location = {
+                lat: gps.lat,
+                lon: gps.lon,
+                city: '알 수 없음',
+                region: '알 수 없음',
+                country: 'South Korea'
+            };
+            // 2. Reverse Geocode to get District (Jongno, etc.)
+            await this.reverseGeocode(gps.lat, gps.lon);
+            await this.updateWeather();
+            return;
+        }
+
+        // 3. Fallback: IP-based location (less accurate, ISP gateway)
         try {
-            // 1. IP Detection
             const ipData = await fetch('https://ipapi.co/json/').then(res => res.json());
             this.ip = ipData.ip;
             this.location = {
@@ -18,11 +34,42 @@ export class LocationManager {
                 lon: ipData.longitude,
                 region: ipData.region
             };
-
-            // 2. Fetch Weather based on IP location
             await this.updateWeather();
         } catch (err) {
             console.warn('IP-based location detection failed:', err);
+        }
+    }
+
+    getGPS() {
+        return new Promise((resolve) => {
+            if (!("geolocation" in navigator)) return resolve(null);
+            navigator.geolocation.getCurrentPosition(
+                (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+                (err) => {
+                    console.warn('GPS access denied or error:', err);
+                    resolve(null);
+                },
+                { enableHighAccuracy: true, timeout: 5000 }
+            );
+        });
+    }
+
+    async reverseGeocode(lat, lon) {
+        try {
+            // Using Nominatim (OpenStreetMap) - Free reverse geocoding
+            const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`;
+            const data = await fetch(url, {
+                headers: { 'User-Agent': 'Allang-AI-Project/1.0' }
+            }).then(res => res.json());
+
+            if (data && data.address) {
+                const addr = data.address;
+                // Prefer specific district (Gu) or city section
+                this.location.city = addr.suburb || addr.city_district || addr.district || addr.city || addr.town || this.location.city;
+                this.location.region = addr.province || addr.state || this.location.region;
+            }
+        } catch (err) {
+            console.warn('Reverse geocoding failed:', err);
         }
     }
 
