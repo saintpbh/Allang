@@ -1,5 +1,5 @@
 // ─── Vision Manager (MediaPipe Face Tracking & Presence) ───
-/* global faceLandmarker, FilesetResolver */
+import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 export class VisionManager {
     constructor(allang) {
@@ -52,6 +52,7 @@ export class VisionManager {
     stop() {
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
+            this.video.srcObject = null;
         }
         this.isActive = false;
     }
@@ -62,7 +63,7 @@ export class VisionManager {
         const now = Date.now();
 
         // Only run detection if there's a new video frame
-        if (this.video.currentTime !== this.lastVideoTime) {
+        if (this.video.currentTime !== this.lastVideoTime && this.video.readyState >= 2) {
             this.lastVideoTime = this.video.currentTime;
 
             const results = this.faceLandmarker.detectForVideo(this.video, now);
@@ -73,27 +74,32 @@ export class VisionManager {
                 this.lastDetectedTime = now;
                 this._awayTriggered = false;
 
-                // Index 1 is roughly the nose tip
-                const nose = landmarks[1];
-                // MediaPipe gives 0-1 normalized coordinates. 
-                // We use these directly for our eye target.
-                // Flip X because the camera is mirrored usually.
+                // Index 4 is nose tip in Face Landmarker (or 1 in some models, but 4 is usually better)
+                // Let's use landmark 4 (mid nose tip)
+                const nose = landmarks[4];
                 this.facePos.x = 1.0 - nose.x;
                 this.facePos.y = nose.y;
 
                 this.allang.setEyeTarget(this.facePos.x, this.facePos.y);
 
-                // Optional: Check blendshapes for smiles/expressions
+                // Check blendshapes for smiles
                 if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
                     const shapes = results.faceBlendshapes[0].categories;
-                    const smile = shapes.find(s => s.categoryName === "smileLeft")?.score || 0;
-                    if (smile > 0.6) {
-                        this.allang.drawFace('happy');
+                    const mouthSmileLeft = shapes.find(s => s.categoryName === "mouthSmileLeft")?.score || 0;
+                    const mouthSmileRight = shapes.find(s => s.categoryName === "mouthSmileRight")?.score || 0;
+
+                    if (mouthSmileLeft > 0.4 || mouthSmileRight > 0.4) {
+                        if (this.allang.currentExpression !== 'happy') {
+                            this.allang.drawFace('happy');
+                        }
+                    } else if (this.allang.currentExpression === 'happy' && !this.allang._isPetting) {
+                        // Return to default if smile stops
+                        this.allang.drawFace('default');
                     }
                 }
             } else {
                 // Presence timeout logic
-                if (now - this.lastDetectedTime > 6000 && !this._awayTriggered) {
+                if (now - this.lastDetectedTime > 8000 && !this._awayTriggered) {
                     this.isPresent = false;
                     this._awayTriggered = true;
                     this.allang.triggerAwayBehavior();

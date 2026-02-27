@@ -56,6 +56,7 @@ export class Allang {
                 uWobble: { value: 0.08 },
                 uGlow: { value: 0.4 },
                 uBreath: { value: 0.0 },
+                uPetPoint: { value: new THREE.Vector3(0, 0, 1) },
                 uPetStrength: { value: 0.0 },
                 uRecall: { value: 0.0 }
             },
@@ -106,6 +107,7 @@ export class Allang {
                 uniform vec3 uColor2;
                 uniform float uGlow;
                 uniform float uRecall;
+                uniform float uTime;
 
                 // Hash for particles
                 float hash(vec3 p) {
