@@ -109,6 +109,8 @@ class App {
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
 
+        this.initChat();
+        this.initPetting();
         this.initResize();
         this.initSettings();
         this.animate();
