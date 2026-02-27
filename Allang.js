@@ -17,6 +17,12 @@ export class Allang {
         this._shakeIntensity = 0;
         this._shakeDecay = 0.92;
 
+        // Face & Vision state
+        this._eyeOffset = { x: 0, y: 0 };
+        this._eyeTarget = { x: 0.5, y: 0.5 };
+        this._isAway = false;
+        this._awayStartTime = 0;
+
         this.initCore();       // Layer 1: Inner Core
         this.initBody();       // Layer 2: Jelly Body
         this.initGlow();       // Layer 3: Outer Glow Aura
@@ -236,10 +242,16 @@ export class Allang {
         this.group.add(this.faceMesh);
 
         this.currentExpression = 'default';
+        this._eyeOffset = new THREE.Vector2(0, 0);
+        this._eyeTarget = new THREE.Vector2(0, 0);
+        this._isAway = false;
+        this._awayStartTime = 0;
         this.drawFace('default');
     }
 
     drawFace(expression) {
+        if (expression) this.currentExpression = expression;
+
         const ctx = this.faceCtx;
         const w = 256, h = 256;
         ctx.clearRect(0, 0, w, h);
@@ -248,70 +260,87 @@ export class Allang {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        switch (expression) {
+        // Eye positions with dynamic offset
+        // Normal pupil range is roughly +/- 15px
+        const ox = this._eyeOffset.x * 30;
+        const oy = this._eyeOffset.y * 20;
+
+        switch (this.currentExpression) {
             case 'happy': // ∧∧ eye smile
                 ctx.font = 'bold 50px Outfit, sans-serif';
-                ctx.fillText('∧', w * 0.35, h * 0.42);
-                ctx.fillText('∧', w * 0.65, h * 0.42);
+                ctx.fillText('∧', w * 0.35 + ox, h * 0.42 + oy);
+                ctx.fillText('∧', w * 0.65 + ox, h * 0.42 + oy);
                 // Blush cheeks
                 ctx.fillStyle = 'rgba(255, 100, 100, 0.3)';
-                ctx.beginPath();
-                ctx.arc(w * 0.22, h * 0.55, 18, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(w * 0.78, h * 0.55, 18, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.22, h * 0.55, 18, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(w * 0.78, h * 0.55, 18, 0, Math.PI * 2); ctx.fill();
                 break;
-            case 'sad': // _ _ closed eyes, droopy
+            case 'sad': // _ _ closed eyes
                 ctx.font = 'bold 60px Outfit, sans-serif';
-                ctx.fillText('_', w * 0.35, h * 0.45);
-                ctx.fillText('_', w * 0.65, h * 0.45);
-                // Small frown
+                ctx.fillText('_', w * 0.35 + ox, h * 0.45 + oy);
+                ctx.fillText('_', w * 0.65 + ox, h * 0.45 + oy);
                 ctx.font = '30px Outfit, sans-serif';
-                ctx.fillStyle = '#1a1a1a';
                 ctx.fillText('︵', w * 0.5, h * 0.65);
                 break;
-            case 'angry': // > < furrowed
+            case 'angry': // > <
                 ctx.font = 'bold 45px Outfit, sans-serif';
-                ctx.fillText('>', w * 0.35, h * 0.45);
-                ctx.fillText('<', w * 0.65, h * 0.45);
-                // V eyebrows
-                ctx.strokeStyle = '#1a1a1a';
-                ctx.lineWidth = 4;
-                ctx.beginPath();
-                ctx.moveTo(w * 0.22, h * 0.28); ctx.lineTo(w * 0.4, h * 0.33);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(w * 0.78, h * 0.28); ctx.lineTo(w * 0.6, h * 0.33);
-                ctx.stroke();
+                ctx.fillText('>', w * 0.35 + ox, h * 0.45 + oy);
+                ctx.fillText('<', w * 0.65 + ox, h * 0.45 + oy);
+                ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(w * 0.22, h * 0.28); ctx.lineTo(w * 0.4, h * 0.33); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(w * 0.78, h * 0.28); ctx.lineTo(w * 0.6, h * 0.33); ctx.stroke();
                 break;
-            case 'surprise': // O O wide open
+            case 'surprise': // O O
                 ctx.font = 'bold 55px Outfit, sans-serif';
-                ctx.fillText('O', w * 0.35, h * 0.42);
-                ctx.fillText('O', w * 0.65, h * 0.42);
-                // Open mouth
+                ctx.fillText('O', w * 0.35 + ox, h * 0.42 + oy);
+                ctx.fillText('O', w * 0.65 + ox, h * 0.42 + oy);
                 ctx.font = '35px Outfit, sans-serif';
                 ctx.fillText('o', w * 0.5, h * 0.66);
                 break;
-            case 'curious': // ? + tilted
+            case 'curious': // ? +
                 ctx.font = 'bold 45px Outfit, sans-serif';
-                ctx.fillText('?', w * 0.35, h * 0.42);
-                ctx.fillText('+', w * 0.65, h * 0.42);
+                ctx.fillText('?', w * 0.35 + ox, h * 0.42 + oy);
+                ctx.fillText('+', w * 0.65 + ox, h * 0.42 + oy);
                 break;
-            case 'tired': // ~ ~ droopy
-                ctx.font = 'bold 50px Outfit, sans-serif';
-                ctx.fillText('~', w * 0.35, h * 0.45);
-                ctx.fillText('~', w * 0.65, h * 0.45);
+            case 'tired': // ~ ~
+                ctx.font = 'bold 55px Outfit, sans-serif';
+                ctx.fillText('~', w * 0.35 + ox, h * 0.45 + oy);
+                ctx.fillText('~', w * 0.65 + ox, h * 0.45 + oy);
                 break;
-            default: // + + default calm
+            case 'waiting': // puppy waiting (◕_◕)
+                ctx.font = 'bold 55px Outfit, sans-serif';
+                ctx.fillText('●', w * 0.35 + ox, h * 0.42 + oy);
+                ctx.fillText('●', w * 0.65 + ox, h * 0.42 + oy);
+                ctx.font = '30px Outfit, sans-serif';
+                ctx.fillText('_', w * 0.5, h * 0.5);
+                break;
+            case 'default':
+            default: // + +
                 ctx.font = 'bold 50px Outfit, sans-serif';
-                ctx.fillText('+', w * 0.35, h * 0.42);
-                ctx.fillText('+', w * 0.65, h * 0.42);
+                ctx.fillText('+', w * 0.35 + ox, h * 0.42 + oy);
+                ctx.fillText('+', w * 0.65 + ox, h * 0.42 + oy);
                 break;
         }
 
         this.faceTexture.needsUpdate = true;
-        this.currentExpression = expression;
+    }
+
+    // ─── Vision Hooks ───
+    setEyeTarget(x, y) {
+        this._eyeTarget.x = x;
+        this._eyeTarget.y = y;
+        this._isAway = false;
+    }
+
+    triggerAwayBehavior() {
+        if (this._isAway) return;
+        this._isAway = true;
+        this._awayStartTime = this.bodyMaterial.uniforms.uTime.value;
+
+        // Initial transition: puppy waiting
+        this.drawFace('waiting');
+        gsap.to(this.body.scale, { x: 0.95, y: 1.05, z: 0.95, duration: 1.2, ease: "power1.inOut" });
+        gsap.to(this.group.rotation, { x: -0.1, duration: 1.5 }); // looking up/forward
     }
 
     // ─── Petting System (Multi-Phase Reactions) ───
@@ -555,6 +584,34 @@ export class Allang {
             );
         }
         posAttr.needsUpdate = true;
+
+        // ─── Vision Eye Tracking & Away Logic ───
+        if (!this._isAway) {
+            // Target face center (0.5, 0.5) is neutral.
+            // Map face position to eye offset (-1 to 1 range)
+            const targetOX = (this._eyeTarget.x - 0.5) * 2;
+            const targetOY = (this._eyeTarget.y - 0.5) * 2;
+
+            // Smooth interpolation
+            this._eyeOffset.x += (targetOX - this._eyeOffset.x) * 0.1;
+            this._eyeOffset.y += (targetOY - this._eyeOffset.y) * 0.1;
+
+            // Redraw only if there's meaningful movement
+            if (Math.abs(targetOX - this._eyeOffset.x) > 0.01 || Math.abs(targetOY - this._eyeOffset.y) > 0.01) {
+                this.drawFace();
+            }
+        } else {
+            // Away behavior cycles
+            const awayTime = time - this._awayStartTime;
+            if (awayTime > 15 && this.currentExpression === 'waiting') {
+                this.drawFace('tired'); // Bored
+                gsap.to(this.body.scale, { y: 0.9, duration: 2 });
+            } else if (awayTime > 30 && this.currentExpression !== 'sad') {
+                this.drawFace('sad'); // Lonely
+            }
+            // Continuous tiny float when alone
+            this.group.position.y += Math.sin(time * 0.5) * 0.001;
+        }
 
         // ─── Autonomous Idle Behaviors ───
         const timeSinceInteraction = time - this._lastInteraction;

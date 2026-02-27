@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { Allang } from './Allang.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { MemoryManager } from './MemoryManager.js';
+import { LocationManager } from './LocationManager.js';
+import { VisionManager } from './VisionManager.js';
 
 // ─── API Key: localStorage > .env fallback ───
 function getApiKey() {
@@ -63,10 +65,13 @@ class App {
 
         // Memory system
         this.memory = new MemoryManager();
+        this.locationMgr = new LocationManager();
+        this.visionMgr = new VisionManager(this.allang);
 
         // API setup
         this.apiKey = getApiKey();
         this._initModels();
+        this._initAwareness();
 
         // Raycaster for petting
         this.raycaster = new THREE.Raycaster();
@@ -103,6 +108,14 @@ class App {
         this.classifierChat = this.classifierModel.startChat();
     }
 
+    async _initAwareness() {
+        const locEnabled = localStorage.getItem('allang_loc_enabled') === 'true';
+        const visEnabled = localStorage.getItem('allang_vis_enabled') === 'true';
+
+        if (locEnabled) await this.locationMgr.init();
+        if (visEnabled) await this.visionMgr.start();
+    }
+
     // ─── Settings Modal ───
     initSettings() {
         const modal = document.querySelector('#settings-modal');
@@ -118,6 +131,10 @@ class App {
         const likesInput = document.querySelector('#profile-likes');
         const dislikesInput = document.querySelector('#profile-dislikes');
         const resetMemBtn = document.querySelector('#reset-memory-btn');
+
+        // Toggles
+        const locToggle = document.querySelector('#toggle-location');
+        const visToggle = document.querySelector('#toggle-vision');
 
         const updateStatus = () => {
             if (this.apiKey) {
@@ -135,6 +152,9 @@ class App {
             if (birthdayInput) birthdayInput.value = p.birthday || '';
             if (likesInput) likesInput.value = (p.likes || []).join(', ');
             if (dislikesInput) dislikesInput.value = (p.dislikes || []).join(', ');
+
+            if (locToggle) locToggle.checked = localStorage.getItem('allang_loc_enabled') === 'true';
+            if (visToggle) visToggle.checked = localStorage.getItem('allang_vis_enabled') === 'true';
         };
 
         openBtn.addEventListener('click', () => {
@@ -179,6 +199,18 @@ class App {
                 profile.dislikes = dislikesInput.value.split(',').map(s => s.trim()).filter(Boolean);
             }
             this.memory.saveProfile(profile);
+
+            // Save permissions
+            const locWas = localStorage.getItem('allang_loc_enabled') === 'true';
+            const visWas = localStorage.getItem('allang_vis_enabled') === 'true';
+
+            localStorage.setItem('allang_loc_enabled', locToggle.checked);
+            localStorage.setItem('allang_vis_enabled', visToggle.checked);
+
+            // Apply immediately if changed
+            if (locToggle.checked && !locWas) this.locationMgr.init();
+            if (visToggle.checked && !visWas) this.visionMgr.start();
+            else if (!visToggle.checked && visWas) this.visionMgr.stop();
         });
 
         // Reset memory button
@@ -291,11 +323,11 @@ class App {
             }
 
             try {
-                // Build memory context and prepend to message
+                // Build memory and environment context
                 const memCtx = await this.memory.buildMemoryContext();
-                const augmentedMessage = memCtx
-                    ? `${memCtx}\n\n[사용자 메시지]\n${text}`
-                    : text;
+                const envCtx = this.locationMgr.getContextString();
+
+                const augmentedMessage = `${memCtx}\n${envCtx}\n\n[사용자 메시지]\n${text}`;
 
                 const result = await this.chat.sendMessage(augmentedMessage);
                 const responseText = result.response.text();
@@ -333,6 +365,9 @@ class App {
     animate() {
         requestAnimationFrame(this.animate.bind(this));
         const time = this.clock.getElapsedTime();
+
+        if (this.visionMgr) this.visionMgr.update(time);
+
         this.allang.update(time);
         this.renderer.render(this.scene, this.camera);
     }
