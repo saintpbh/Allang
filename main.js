@@ -109,6 +109,7 @@ class App {
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
 
+        this.initResize();
         this.initSettings();
         this.animate();
     }
@@ -327,6 +328,21 @@ class App {
     }
 
     // ─── Interaction Handling (v10.0) ───
+    initResize() {
+        window.addEventListener('resize', () => {
+            this.width = window.innerWidth;
+            this.height = window.innerHeight;
+
+            this.camera.aspect = this.width / this.height;
+            this.camera.updateProjectionMatrix();
+
+            this.renderer.setSize(this.width, this.height);
+        });
+
+        // Call once to trigger layout
+        window.dispatchEvent(new Event('resize'));
+    }
+
     initInteraction() {
         const canvas = this.canvas;
         let isPetting = false;
@@ -433,9 +449,6 @@ class App {
         // UI Interaction resets Zen mode
         this.chatInput.addEventListener('keydown', () => this.resetZenTimer());
         this.chatInput.addEventListener('focus', () => this.resetZenTimer());
-
-        // Window Resize
-        window.addEventListener('resize', this.onWindowResize.bind(this));
     }
 
     // ─── Zen Mode (v10.0) ───
