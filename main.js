@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { Allang } from './Allang.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { MemoryManager } from './MemoryManager.js';
 import { LocationManager } from './LocationManager.js';
 import { VisionManager } from './VisionManager.js';
+import { MemoryManager } from './MemoryManager.js';
 import { ProactiveManager } from './ProactiveManager.js';
+import { SoundManager } from './SoundManager.js'; // v10.0
 
 // ─── API Key: localStorage > .env fallback ───
 function getApiKey() {
@@ -13,40 +14,40 @@ function getApiKey() {
 
 // ─── Base System Prompt (memory context appended dynamically) ───
 const BASE_SYSTEM_PROMPT = `
-당신은 윈도우용 AI 친구 '알랑'의 두뇌입니다. 사용자의 입력을 분석하여 다음 JSON 형식으로만 응답하세요.
+당신은 윈도우용 AI 친구 '알랑'의 두뇌입니다.사용자의 입력을 분석하여 다음 JSON 형식으로만 응답하세요.
 JSON 응답 구조:
 { "action": "명령어", "color_hex": "#색상코드", "message": "알랑의 대사" }
 
-"action" 필드엔 다음 규격의 명령어를 넣으세요: {감정}_{행동}_{강도}_{지속시간}
-1. 감정 (Emotion): 기쁨, 슬픔, 놀람, 화남, 궁금함, 평온, 피곤 
-2. 행동 (Action): 기본, 인사, 흔들림, 회전, 응시, 움츠림, 확장, 속삭임, 하품, 떨림, 점프, 대시
-3. 강도 (Intensity): 약, 중, 강
-4. 지속시간 (Duration): 짧게, 보통, 길게
+"action" 필드엔 다음 규격의 명령어를 넣으세요: { 감정 }_{ 행동 }_{ 강도 }_{ 지속시간 }
+1. 감정(Emotion): 기쁨, 슬픔, 놀람, 화남, 궁금함, 평온, 피곤
+2. 행동(Action): 기본, 인사, 흔들림, 회전, 응시, 움츠림, 확장, 속삭임, 하품, 떨림, 점프, 대시
+3. 강도(Intensity): 약, 중, 강
+4. 지속시간(Duration): 짧게, 보통, 길게
 
 사용 예시:
 - 신나는 점프: 활동_점프_강_보통
-- 구석구석 살피기: 활동_기본_중_길게
-- 빠르게 대시: 활동_대시_강_짧게
-- 공중 나선 비행: 활동_회전_중_보통
+    - 구석구석 살피기: 활동_기본_중_길게
+        - 빠르게 대시: 활동_대시_강_짧게
+            - 공중 나선 비행: 활동_회전_중_보통
 
 동작 프리셋 예시:
 - 평온한 부유: 평온_기본_약_길게
-- 반가운 흔들림: 기쁨_흔들림_중_보통
-- 궁금한 응시: 궁금함_응시_중_보통
-- 놀란 확장: 놀람_확장_강_짧게
-- 슬픈 움츠림: 슬픔_움츠림_중_길게
-- 피곤한 하품: 피곤_하품_약_길게
-- 신나는 회전: 기쁨_회전_강_짧게
-- 화난 떨림: 화남_떨림_강_보통
-- 인사하기: 기쁨_인사_중_짧게
-- 조용히 속삭임: 평온_속삭임_약_보통
+    - 반가운 흔들림: 기쁨_흔들림_중_보통
+        - 궁금한 응시: 궁금함_응시_중_보통
+            - 놀란 확장: 놀람_확장_강_짧게
+                - 슬픈 움츠림: 슬픔_움츠림_중_길게
+                    - 피곤한 하품: 피곤_하품_약_길게
+                        - 신나는 회전: 기쁨_회전_강_짧게
+                            - 화난 떨림: 화남_떨림_강_보통
+                                - 인사하기: 기쁨_인사_중_짧게
+                                    - 조용히 속삭임: 평온_속삭임_약_보통
 
 중요: 기억 컨텍스트가 주어지면 사용자의 이름을 부르고, 과거 대화를 자연스럽게 참조하세요.
 반드시 JSON 외에 다른 설명은 하지 마세요.
 `;
 
 // ─── Memory Classifier Prompt ───
-const CLASSIFIER_SYSTEM = `당신은 대화 내용에서 기억할 정보를 추출하는 분류기입니다. JSON 배열만 출력하세요.`;
+const CLASSIFIER_SYSTEM = `당신은 대화 내용에서 기억할 정보를 추출하는 분류기입니다.JSON 배열만 출력하세요.`;
 
 class App {
     constructor() {
@@ -68,13 +69,27 @@ class App {
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
         this.allang = new Allang(this.scene);
+        this.renderer.compile(this.scene, this.camera);
         this.clock = new THREE.Clock();
 
-        // Memory system
+        // Subsystems
         this.memory = new MemoryManager();
         this.locationMgr = new LocationManager();
         this.visionMgr = new VisionManager(this.allang);
         this.proactiveMgr = new ProactiveManager(this.allang, this.locationMgr, this.visionMgr, this.memory);
+        this.soundMgr = new SoundManager(); // v10.0
+
+        this.allang.soundMgr = this.soundMgr;
+
+        // UI Elements
+        this.chatInput = document.querySelector('#chat-input');
+        this.sendBtn = document.querySelector('#send-btn');
+        this.messagesCont = document.querySelector('#chat-messages');
+
+        // Zen Mode State (v10.0)
+        this.isZenMode = false;
+        this.zenTimer = null;
+        this.uiOverlay = document.querySelector('.ui-overlay');
 
         // API setup
         this.apiKey = getApiKey();
@@ -83,6 +98,9 @@ class App {
             this.isInitializing = false;
         });
         this._initAwareness();
+
+        // Setup interaction
+        this.initInteraction();
         this._initProactive();
 
         this._lastUserActive = 0; // Time of last user message
@@ -91,9 +109,6 @@ class App {
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
 
-        this.initResize();
-        this.initChat();
-        this.initPetting();
         this.initSettings();
         this.animate();
     }
@@ -164,7 +179,7 @@ class App {
             if (this.isGenerating || !this.chat) return;
 
             const reason = e.detail.reason;
-            console.log(`AI initiating conversation: ${reason}`);
+            console.log(`AI initiating conversation: ${reason} `);
 
             // Trigger visual cue
             this.allang.triggerRecallEffect(1.0);
@@ -173,13 +188,13 @@ class App {
                 const memCtx = await this.memory.buildMemoryContext();
                 const envCtx = this.locationMgr.getContextString();
 
-                const proactivePrompt = ` 당신은 Allang(알랑)입니다. 지금 ${reason} 상황입니다. 
+                const proactivePrompt = ` 당신은 Allang(알랑)입니다.지금 ${reason} 상황입니다. 
                 사용자에게 먼저 대화의 물꼬를 트는 한 문장의 짧고 다정한 말을 하세요.
                 상황에 따라 위치, 날씨, 또는 기억하고 있는 사용자의 취향을 언급하면 더 좋습니다.
-                반드시 한 문장으로 대답하세요. JSON 형식이 아닌 일반 텍스트로 답하세요.
-                
-                ${memCtx}
-                ${envCtx}`;
+                반드시 한 문장으로 대답하세요.JSON 형식이 아닌 일반 텍스트로 답하세요.
+
+    ${memCtx}
+                ${envCtx} `;
 
                 const result = await this.chat.sendMessage(proactivePrompt);
                 const text = result.response.text();
@@ -214,7 +229,7 @@ class App {
 
         const updateStatus = () => {
             if (this.apiKey) {
-                status.textContent = `✅ API 키 설정됨 (${this.apiKey.slice(0, 8)}...)`;
+                status.textContent = `✅ API 키 설정됨(${this.apiKey.slice(0, 8)}...)`;
                 status.className = 'api-status connected';
             } else {
                 status.textContent = '❌ API 키가 없습니다. 설정해 주세요.';
@@ -311,10 +326,15 @@ class App {
         }
     }
 
-    // ─── Petting (Drag on Jelly) ───
-    initPetting() {
+    // ─── Interaction Handling (v10.0) ───
+    initInteraction() {
         const canvas = this.canvas;
         let isPetting = false;
+
+        // v10.0 Mouse tracking state
+        this.lastMousePos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        this.lastMouseTime = Date.now();
+        this.resetZenTimer();
 
         const getNDC = (clientX, clientY) => {
             const rect = canvas.getBoundingClientRect();
@@ -368,20 +388,73 @@ class App {
             tryPetMove(t.clientX, t.clientY);
         }, { passive: true });
         canvas.addEventListener('touchend', petEnd);
-    }
 
-    initResize() {
-        window.addEventListener('resize', () => {
-            this.width = window.innerWidth;
-            this.height = window.innerHeight;
+        window.addEventListener('mousemove', (e) => {
+            this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            this._lastUserActive = this.clock.getElapsedTime();
+            this.proactiveMgr.registerInteraction();
+            this.resetZenTimer();
 
-            this.camera.aspect = this.width / this.height;
-            this.camera.updateProjectionMatrix();
+            // v10.0 Eye Tracking & Physics
+            // Normalize cursor position for eye target (0.0 ~ 1.0)
+            const nx = e.clientX / window.innerWidth;
+            const ny = e.clientY / window.innerHeight;
+            this.allang.setEyeTarget(nx, ny);
 
-            this.renderer.setSize(this.width, this.height);
+            // Calculate mouse speed for physical reaction
+            const now = Date.now();
+            const dt = now - this.lastMouseTime;
+            if (dt > 16) { // ~60fps check
+                const dx = e.clientX - this.lastMousePos.x;
+                const dy = e.clientY - this.lastMousePos.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const speed = dist / dt;
+
+                // If fast swipe near Allang, trigger wobble (surprise)
+                if (speed > 5.0) {
+                    this.allang._shakeIntensity = Math.min(this.allang._shakeIntensity + speed * 0.1, 1.0);
+                    if (this.allang.currentExpression !== 'surprise' && Math.random() > 0.8) {
+                        this.allang.drawFace('surprise');
+                        if (this.soundMgr) this.soundMgr.playBoop();
+                        // Assuming gsap is available globally or imported
+                        if (typeof gsap !== 'undefined') {
+                            gsap.delayedCall(1, () => this.allang.drawFace(this.allang.baseExpression));
+                        }
+                    }
+                }
+
+                this.lastMousePos.x = e.clientX;
+                this.lastMousePos.y = e.clientY;
+                this.lastMouseTime = now;
+            }
         });
+
+        // UI Interaction resets Zen mode
+        this.chatInput.addEventListener('keydown', () => this.resetZenTimer());
+        this.chatInput.addEventListener('focus', () => this.resetZenTimer());
+
+        // Window Resize
+        window.addEventListener('resize', this.onWindowResize.bind(this));
     }
 
+    // ─── Zen Mode (v10.0) ───
+    resetZenTimer() {
+        if (this.isZenMode) {
+            this.isZenMode = false;
+            this.uiOverlay.classList.remove('zen-hidden');
+        }
+        clearTimeout(this.zenTimer);
+        // Hide UI after 10 seconds of no mouse/keyboard input
+        this.zenTimer = setTimeout(() => {
+            if (document.activeElement !== this.chatInput) {
+                this.isZenMode = true;
+                this.uiOverlay.classList.add('zen-hidden');
+            }
+        }, 10000);
+    }
+
+    // ─── Chat Implementation ───
     initChat() {
         const input = document.querySelector('#chat-input');
         const sendBtn = document.querySelector('#send-btn');
@@ -419,11 +492,11 @@ class App {
                     this.allang.triggerRecallEffect(1.5);
                 }
 
-                const augmentedMessage = `${memCtx}\n${envCtx}\n\n[사용자 메시지]\n${text}`;
+                const augmentedMessage = `${memCtx} \n${envCtx} \n\n[사용자 메시지]\n${text} `;
 
                 const result = await this.chat.sendMessage(augmentedMessage);
                 const responseText = result.response.text();
-                const cleanJson = responseText.replace(/```json|```/g, '').trim();
+                const cleanJson = responseText.replace(/```json | ```/g, '').trim();
                 const data = JSON.parse(cleanJson);
 
                 this.addMessage(data.message, 'bot');
@@ -459,7 +532,7 @@ class App {
         if (!messagesCont) return;
 
         const div = document.createElement('div');
-        div.className = `message ${type}`;
+        div.className = `message ${type} `;
         div.textContent = text;
         messagesCont.appendChild(div);
         messagesCont.scrollTop = messagesCont.scrollHeight;

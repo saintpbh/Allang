@@ -7,6 +7,7 @@ export class Allang {
         this.baseColor = new THREE.Color('#F5A623');
         this.group = new THREE.Group();
         this.scene.add(this.group);
+        this.soundMgr = null; // Injected from main.js (v10.0)
 
         // Idle behavior state
         this._lastInteraction = 0;
@@ -437,6 +438,11 @@ export class Allang {
 
         this._isDoingIdleBehavior = true; // Lock idle behavior
 
+        // Check if we have soundMgr and play jump sound if hopping
+        if (this.soundMgr && Math.random() > 0.6) {
+            this.soundMgr.playBounce();
+        }
+
         // Pick a random category and then a random action
         const categories = Object.keys(this.SOLO_ACTIONS);
         const cat = categories[Math.floor(Math.random() * categories.length)];
@@ -456,10 +462,11 @@ export class Allang {
     // ─── Petting System (Multi-Phase Reactions) ───
     startPet() {
         this._isPetting = true;
-        this._petDuration = 0;
         this._petPhase = 'pleased';
         this._petPhaseChanged = false;
         this._petDuration = 0;
+
+        if (this.soundMgr) this.soundMgr.playPurr();
 
         // Solo Play Actions (v8.0)
         this.SOLO_ACTIONS = {
@@ -1026,9 +1033,11 @@ export class Allang {
     }
 
     // ════════════════════════════════════
-    //  ACTIVITY ACTIONS (v9.0)
+    //  ACTIVITY ACTIONS (v9.0 / v10.0)
     // ════════════════════════════════════
     jump(intensity = 1.0) {
+        if (this.soundMgr) this.soundMgr.playJump();
+
         const height = 1.0 * intensity;
         const tl = gsap.timeline();
 
@@ -1059,6 +1068,8 @@ export class Allang {
     }
 
     spiral(intensity = 1.0) {
+        if (this.soundMgr) this.soundMgr.playBounce();
+
         const tl = gsap.timeline();
         this.drawFace('happy');
 
@@ -1076,6 +1087,8 @@ export class Allang {
     roamRandomly(intensity = 1.0) {
         if (this._isDoingIdleBehavior) return;
         this._isDoingIdleBehavior = true; // Lock state
+
+        if (this.soundMgr) this.soundMgr.playBounce();
 
         this.targetPos.set(
             (Math.random() - 0.5) * this.roamBounds.x * intensity,
