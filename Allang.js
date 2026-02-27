@@ -18,10 +18,14 @@ export class Allang {
         this._shakeDecay = 0.92;
 
         // Face & Vision state
-        this._eyeOffset = { x: 0, y: 0 };
         this._eyeTarget = { x: 0.5, y: 0.5 };
         this._isAway = false;
         this._awayStartTime = 0;
+
+        // Roaming state (v9.0)
+        this.targetPos = new THREE.Vector3(0, 0.5, 0); // Default slightly above center
+        this.velocity = new THREE.Vector3(0, 0, 0);
+        this.roamBounds = { x: 2.5, y: 1.5, z: 0.5 }; // Boundary limits in 3D space
 
         this.initCore();       // Layer 1: Inner Core
         this.initBody();       // Layer 2: Jelly Body
@@ -654,8 +658,39 @@ export class Allang {
     // ─── Update Loop ───
     update(time) {
         this.bodyMaterial.uniforms.uTime.value = time;
-        this.bodyMaterial.uniforms.uBreath.value = 0.015;
 
+        // Roaming Movement (v9.0)
+        // Spring-like movement towards targetPos
+        const spring = 0.02;
+        const damping = 0.94;
+
+        const force = this.targetPos.clone().sub(this.group.position).multiplyScalar(spring);
+        this.velocity.add(force).multiplyScalar(damping);
+        this.group.position.add(this.velocity);
+
+        // Tilt body based on velocity (Squash & Stretch feel)
+        this.group.rotation.z = -this.velocity.x * 2.0;
+        this.group.rotation.x = this.velocity.y * 1.5;
+
+        const speed = this.velocity.length();
+        const squash = 1.0 + speed * 0.5;
+        this.body.scale.set(1 / squash, squash, 1 / squash);
+
+        // Boredom / Away Face
+        if (this._isAway) {
+            const elapsed = time - this._awayStartTime;
+            if (elapsed > 300) { // 5 mins
+                this.drawFace('tired'); // Really bored
+            }
+        }
+
+        // Petting strength decay
+        if (!this._isPetting && this.bodyMaterial.uniforms.uPetStrength.value > 0) {
+            this.bodyMaterial.uniforms.uPetStrength.value *= 0.9;
+        }
+
+        // Normal Idle Behavior
+        this._performIdleBehavior(time);
         // Shake physics: gentle wobble boost + micro-jitter (clamped)
         if (this._shakeIntensity > 0.01) {
             const baseWobble = this.bodyMaterial.uniforms.uWobble.value;
@@ -868,7 +903,7 @@ export class Allang {
         const expressionMap = {
             '기쁨': 'happy', '슬픔': 'sad', '화남': 'angry',
             '놀람': 'surprise', '궁금함': 'curious', '피곤': 'tired',
-            '평온': 'default'
+            '평온': 'default', '활동': 'happy'
         };
         this.drawFace(expressionMap[emotion] || 'default');
 
@@ -877,6 +912,24 @@ export class Allang {
             opacity: Math.min(0.35 + intensity * 0.15, 0.7),
             duration: duration
         });
+
+        // ─── ACTIVITY CATEGORY (활동) ───
+        if (emotion === '활동') {
+            switch (action) {
+                case '점프':
+                    this.jump(intensity);
+                    return;
+                case '대시':
+                    this.dash(intensity);
+                    return;
+                case '회전':
+                    this.spiral(intensity);
+                    return;
+                case '기본':
+                    this.roamRandomly(intensity);
+                    return;
+            }
+        }
 
         // Toned-down, physically grounded presets
         switch (action) {
@@ -944,5 +997,61 @@ export class Allang {
         // Core color
         const coreColor = color.clone().lerp(new THREE.Color('#ffffff'), 0.5);
         gsap.to(this.core.material.color, { r: coreColor.r, g: coreColor.g, b: coreColor.b, duration });
+    }
+
+    // ════════════════════════════════════
+    //  ACTIVITY ACTIONS (v9.0)
+    // ════════════════════════════════════
+    jump(intensity = 1.0) {
+        const height = 1.0 * intensity;
+        const tl = gsap.timeline();
+
+        this.drawFace('happy');
+        // Squash before jump
+        tl.to(this.body.scale, { x: 1.2, y: 0.8, z: 1.2, duration: 0.2 });
+        // Jump up!
+        tl.to(this.targetPos, { y: 2.0 * height, duration: 0.4, ease: "power2.out" });
+        tl.to(this.body.scale, { x: 0.8, y: 1.4, z: 0.8, duration: 0.3 }, "-=0.3");
+        // Fall back
+        tl.to(this.targetPos, { y: 0.5, duration: 0.6, ease: "bounce.out" });
+        tl.to(this.body.scale, { x: 1, y: 1, z: 1, duration: 0.4 });
+    }
+
+    dash(intensity = 1.0) {
+        const dist = 2.0 * intensity;
+        const dir = (Math.random() > 0.5 ? 1 : -1);
+
+        // Stretch in direction of dash
+        this.targetPos.x += dist * dir;
+        this.velocity.x += 0.2 * dir * intensity;
+        this.drawFace('surprise');
+
+        gsap.delayedCall(1.5, () => {
+            this.targetPos.x = 0;
+            this.drawFace('happy');
+        });
+    }
+
+    spiral(intensity = 1.0) {
+        const tl = gsap.timeline();
+        this.drawFace('happy');
+
+        for (let i = 0; i < 3; i++) {
+            tl.to(this.targetPos, {
+                x: Math.sin(i * 2) * 1.5 * intensity,
+                y: Math.cos(i * 2) * 1.0 * intensity + 0.5,
+                duration: 0.5,
+                ease: "linear"
+            });
+        }
+        tl.to(this.targetPos, { x: 0, y: 0.5, duration: 0.8 });
+    }
+
+    roamRandomly(intensity = 1.0) {
+        this.targetPos.set(
+            (Math.random() - 0.5) * this.roamBounds.x * intensity,
+            (Math.random() - 0.5) * this.roamBounds.y * intensity + 0.5,
+            (Math.random() - 0.5) * this.roamBounds.z * intensity
+        );
     }
 }

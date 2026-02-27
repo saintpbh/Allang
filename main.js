@@ -19,9 +19,15 @@ JSON 응답 구조:
 
 "action" 필드엔 다음 규격의 명령어를 넣으세요: {감정}_{행동}_{강도}_{지속시간}
 1. 감정 (Emotion): 기쁨, 슬픔, 놀람, 화남, 궁금함, 평온, 피곤 
-2. 행동 (Action): 기본, 인사, 흔들림, 회전, 응시, 움츠림, 확장, 속삭임, 하품, 떨림
+2. 행동 (Action): 기본, 인사, 흔들림, 회전, 응시, 움츠림, 확장, 속삭임, 하품, 떨림, 점프, 대시
 3. 강도 (Intensity): 약, 중, 강
 4. 지속시간 (Duration): 짧게, 보통, 길게
+
+사용 예시:
+- 신나는 점프: 활동_점프_강_보통
+- 구석구석 살피기: 활동_기본_중_길게
+- 빠르게 대시: 활동_대시_강_짧게
+- 공중 나선 비행: 활동_회전_중_보통
 
 동작 프리셋 예시:
 - 평온한 부유: 평온_기본_약_길게
@@ -477,9 +483,13 @@ class App {
                 this.allang.drawFace('tired');
             }
 
-            // Trigger a random solo play periodically while bored
+            // Trigger a random solo play or roaming periodically while bored
             if (Math.floor(time) % 15 === 0 && !this.allang._isDoingIdleBehavior) {
-                this.allang.triggerSoloPlay();
+                if (Math.random() > 0.4) {
+                    this.allang.triggerSoloPlay();
+                } else {
+                    this.allang.roamRandomly(0.8);
+                }
             }
         }
 
