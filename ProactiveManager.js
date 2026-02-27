@@ -55,7 +55,7 @@ export class ProactiveManager extends EventTarget {
         if (isVisionActive) {
             if (this.visionMgr.isPresent && this._wasAway) {
                 this._wasAway = false;
-                this.trigger('사용자의 복과');
+                this.trigger('사용자의 복귀');
             } else if (!this.visionMgr.isPresent) {
                 this._wasAway = true;
             }

@@ -6,8 +6,10 @@
 const DB_NAME = 'allang_memory';
 const DB_VERSION = 1;
 const STORE_NAME = 'episodes';
+const CHAT_STORE_NAME = 'chat_history';
 const PROFILE_KEY = 'allang_user_profile';
 const MAX_EPISODE_AGE_DAYS = 7;
+const MAX_CHAT_HISTORY = 30;
 
 // ─── Default Profile ───
 const DEFAULT_PROFILE = {
@@ -39,6 +41,10 @@ export class MemoryManager {
                 if (!db.objectStoreNames.contains(STORE_NAME)) {
                     const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
                     store.createIndex('date', 'date', { unique: false });
+                }
+                if (!db.objectStoreNames.contains(CHAT_STORE_NAME)) {
+                    const chatStore = db.createObjectStore(CHAT_STORE_NAME, { keyPath: 'id', autoIncrement: true });
+                    chatStore.createIndex('timestamp', 'timestamp', { unique: false });
                 }
             };
             request.onsuccess = (e) => {
@@ -172,10 +178,69 @@ export class MemoryManager {
     async clearAllEpisodes() {
         const db = await this._getDB();
         return new Promise((resolve) => {
-            const tx = db.transaction(STORE_NAME, 'readwrite');
+            const tx = db.transaction([STORE_NAME, CHAT_STORE_NAME], 'readwrite');
             tx.objectStore(STORE_NAME).clear();
+            tx.objectStore(CHAT_STORE_NAME).clear();
             tx.oncomplete = () => resolve();
         });
+    }
+
+    // ════════════════════════════════════
+    //  CHAT HISTORY PERSISTENCE
+    // ════════════════════════════════════
+    async saveChatMessage(role, text) {
+        const db = await this._getDB();
+        return new Promise((resolve) => {
+            const tx = db.transaction(CHAT_STORE_NAME, 'readwrite');
+            const store = tx.objectStore(CHAT_STORE_NAME);
+            store.add({
+                role, // 'user' or 'model' (Gemini format)
+                text,
+                timestamp: Date.now()
+            });
+
+            tx.oncomplete = async () => {
+                // Prune if over limit
+                await this._pruneChatHistory();
+                resolve();
+            };
+        });
+    }
+
+    async getRecentChatHistory(limit = MAX_CHAT_HISTORY) {
+        const db = await this._getDB();
+        return new Promise((resolve) => {
+            const tx = db.transaction(CHAT_STORE_NAME, 'readonly');
+            const store = tx.objectStore(CHAT_STORE_NAME);
+            const index = store.index('timestamp');
+            const results = [];
+
+            // Get most recent messages
+            index.openCursor(null, 'prev').onsuccess = (e) => {
+                const cursor = e.target.result;
+                if (cursor && results.length < limit) {
+                    results.push(cursor.value);
+                    cursor.continue();
+                } else {
+                    // Return in chronological order
+                    resolve(results.reverse());
+                }
+            };
+        });
+    }
+
+    async _pruneChatHistory() {
+        const db = await this._getDB();
+        const history = await this.getRecentChatHistory(MAX_CHAT_HISTORY + 10);
+        if (history.length <= MAX_CHAT_HISTORY) return;
+
+        const tx = db.transaction(CHAT_STORE_NAME, 'readwrite');
+        const store = tx.objectStore(CHAT_STORE_NAME);
+        // Delete oldest
+        const toDelete = history.length - MAX_CHAT_HISTORY;
+        for (let i = 0; i < toDelete; i++) {
+            store.delete(history[i].id);
+        }
     }
 
     // ════════════════════════════════════

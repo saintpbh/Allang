@@ -72,7 +72,10 @@ class App {
 
         // API setup
         this.apiKey = getApiKey();
-        this._initModels();
+        this.isInitializing = true;
+        this._initModels().finally(() => {
+            this.isInitializing = false;
+        });
         this._initAwareness();
         this._initProactive();
 
@@ -90,7 +93,7 @@ class App {
     }
 
     // ─── Create Models with Memory Context ───
-    _initModels() {
+    async _initModels() {
         if (!this.apiKey) {
             this.chat = null;
             this.classifierChat = null;
@@ -98,12 +101,35 @@ class App {
         }
         const genAI = new GoogleGenerativeAI(this.apiKey);
 
+        // Load recent chat history
+        const historyData = await this.memory.getRecentChatHistory();
+        const geminiHistory = historyData.map(h => ({
+            role: h.role,
+            parts: [{ text: h.text }]
+        }));
+
+        // Populate UI with history if present
+        if (historyData.length > 0) {
+            const messagesCont = document.querySelector('#chat-messages');
+            if (messagesCont) {
+                messagesCont.innerHTML = ''; // Clear default greeting
+                historyData.forEach(h => {
+                    const type = h.role === 'user' ? 'user' : 'bot';
+                    this._displayMessage(h.text, type);
+                });
+            }
+        }
+
         // Main conversation model
         this.mainModel = genAI.getGenerativeModel({
             model: "gemini-flash-latest",
             systemInstruction: BASE_SYSTEM_PROMPT
         });
-        this.chat = this.mainModel.startChat();
+
+        // Start chat with loaded history
+        this.chat = this.mainModel.startChat({
+            history: geminiHistory
+        });
 
         // Classifier model (lightweight, separate session)
         this.classifierModel = genAI.getGenerativeModel({
@@ -367,6 +393,11 @@ class App {
             this.addMessage(text, 'user');
             input.value = '';
 
+            if (this.isInitializing) {
+                this.addMessage("알랑이 이전 대화를 기억해내고 있어요... 잠시만 기다려 주세요!", 'bot');
+                return;
+            }
+
             if (!this.chat) {
                 this.addMessage("⚙️ API 키를 먼저 설정해 주세요! (우측 상단 ⚙️ 버튼)", 'bot');
                 return;
@@ -409,7 +440,18 @@ class App {
     }
 
     addMessage(text, type) {
+        this._displayMessage(text, type);
+
+        // Save to persistent storage
+        const role = (type === 'user') ? 'user' : 'model';
+        this.memory.saveChatMessage(role, text)
+            .catch(err => console.error('Failed to save chat history:', err));
+    }
+
+    _displayMessage(text, type) {
         const messagesCont = document.querySelector('#chat-messages');
+        if (!messagesCont) return;
+
         const div = document.createElement('div');
         div.className = `message ${type}`;
         div.textContent = text;
