@@ -6,6 +6,7 @@ import { VisionManager } from './VisionManager.js';
 import { MemoryManager } from './MemoryManager.js';
 import { ProactiveManager } from './ProactiveManager.js';
 import { SoundManager } from './SoundManager.js'; // v10.0
+import { VoiceManager } from './VoiceManager.js'; // v11.0
 
 // ─── API Key: localStorage > .env fallback ───
 function getApiKey() {
@@ -89,16 +90,32 @@ class App {
 
         this.allang.soundMgr = this.soundMgr;
 
+        // UI Elements
+        this.chatInput = document.querySelector('#chat-input');
+        this.sendBtn = document.querySelector('#send-btn');
+        this.messagesCont = document.querySelector('#chat-messages');
+
+        // Zen Mode State (v10.0)
+        this.isZenMode = false;
+        this.zenTimer = null;
+        this.uiOverlay = document.querySelector('.ui-overlay');
+
+        // Raycaster for petting
+        this.raycaster = new THREE.Raycaster();
+        this.mouse = new THREE.Vector2();
+
         // API setup
         this.apiKey = getApiKey();
         this.isInitializing = true;
         this._initModels().finally(() => {
+            console.log("Models initialized.");
             this.isInitializing = false;
         });
 
         // Other interactive systems
         this._initAwareness();
         this.initInteraction();
+        this.initVoice(); // v11.0
         this._initProactive();
         this.initChat();
         this.initPetting();
@@ -263,9 +280,11 @@ class App {
             if (newKey) {
                 localStorage.setItem('allang_api_key', newKey);
                 this.apiKey = newKey;
-                this._initModels();
-                status.textContent = '✅ 저장 완료!';
-                status.className = 'api-status connected';
+                this._initModels().then(() => {
+                    updateStatus();
+                    status.textContent = '✅ 저장 완료!';
+                    status.className = 'api-status connected';
+                });
             } else {
                 localStorage.removeItem('allang_api_key');
                 this.apiKey = getApiKey();
@@ -446,6 +465,7 @@ class App {
 
     // ─── Zen Mode (v10.0) ───
     resetZenTimer() {
+        if (!this.uiOverlay) return; // Guard clause
         if (this.isZenMode) {
             this.isZenMode = false;
             this.uiOverlay.classList.remove('zen-hidden');
@@ -458,6 +478,40 @@ class App {
                 this.uiOverlay.classList.add('zen-hidden');
             }
         }, 10000);
+    }
+
+    // ─── Voice Input (v11.0) ───
+    initVoice() {
+        const micBtn = document.querySelector('#mic-btn');
+        if (!micBtn) return;
+
+        this.voiceMgr = new VoiceManager(
+            (text) => {
+                const input = document.querySelector('#chat-input');
+                if (input) {
+                    input.value = text;
+                    // Auto-send after voice recognition
+                    const sendBtn = document.querySelector('#send-btn');
+                    if (sendBtn) sendBtn.click();
+                }
+            },
+            (isRecording) => {
+                if (isRecording) {
+                    micBtn.classList.add('recording');
+                    if (this.soundMgr) this.soundMgr.playBoop();
+                } else {
+                    micBtn.classList.remove('recording');
+                }
+            }
+        );
+
+        micBtn.addEventListener('click', () => {
+            if (this.voiceMgr.supported) {
+                this.voiceMgr.start();
+            } else {
+                alert("이 브라우저는 음성 인식을 지원하지 않습니다. (Chrome 권장)");
+            }
+        });
     }
 
     // ─── Chat Implementation ───
@@ -483,7 +537,7 @@ class App {
                 return;
             }
 
-            if (!this.chat) {
+            if (!this.chat || !this.apiKey) {
                 this.addMessage("⚙️ API 키를 먼저 설정해 주세요! (우측 상단 ⚙️ 버튼)", 'bot');
                 return;
             }
@@ -518,9 +572,15 @@ class App {
             }
         };
 
-        sendBtn.addEventListener('click', sendMessage);
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendMessage();
+        sendBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            sendMessage();
+        });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendMessage();
+            }
         });
     }
 
