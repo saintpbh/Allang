@@ -478,11 +478,10 @@ class App {
         if (this.proactiveMgr) this.proactiveMgr.update(time);
 
         // Boredom/Solo Play check: If user hasn't talked for 2 mins (120s)
-        if (time - this._lastUserActive > 120) {
-            if (this.allang.currentExpression === 'default') {
-                this.allang.drawFace('tired');
-            }
+        const isBored = (time - this._lastUserActive > 120);
+        this.allang.setBaseExpression(isBored ? 'tired' : 'default');
 
+        if (isBored) {
             // Trigger a random solo play or roaming periodically while bored
             // v9.1 Fix: Ensure it only triggers ONCE at the interval
             if (time - this.allang._lastBoredActionTime > 15 && !this.allang._isDoingIdleBehavior) {

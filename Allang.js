@@ -23,6 +23,10 @@ export class Allang {
         this._awayStartTime = 0;
         this._lastBoredActionTime = 0; // v9.1: Debounce bored triggers
 
+        // Expression fallback state (v9.3)
+        this.baseExpression = 'default';
+        this.currentExpression = 'default';
+
         // Roaming state (v9.0)
         this.targetPos = new THREE.Vector3(0, 0.5, 0); // Default slightly above center
         this.velocity = new THREE.Vector3(0, 0, 0);
@@ -384,6 +388,16 @@ export class Allang {
         this.faceTexture.needsUpdate = true;
     }
 
+    // ─── Base Expression Management (v9.3) ───
+    setBaseExpression(expr) {
+        if (this.baseExpression !== expr) {
+            this.baseExpression = expr;
+            if (!this._isDoingIdleBehavior && !this._isPetting && !this._isAway) {
+                this.drawFace(this.baseExpression);
+            }
+        }
+    }
+
     // ─── Vision Hooks ───
     setEyeTarget(x, y) {
         this._eyeTarget.x = x;
@@ -421,6 +435,8 @@ export class Allang {
     triggerSoloPlay() {
         if (this._isDoingIdleBehavior || this._isPetting || (Date.now() / 1000 - this._lastInteraction < 5)) return;
 
+        this._isDoingIdleBehavior = true; // Lock idle behavior
+
         // Pick a random category and then a random action
         const categories = Object.keys(this.SOLO_ACTIONS);
         const cat = categories[Math.floor(Math.random() * categories.length)];
@@ -429,6 +445,12 @@ export class Allang {
 
         console.log(`[SoloPlay] Category: ${cat}, Action: ${action.cmd}`);
         this.applyPreset(action.cmd, action.color);
+
+        // Ensure state is unlocked after animation completes (approx 3-4 secs)
+        gsap.delayedCall(4, () => {
+            this._isDoingIdleBehavior = false;
+            if (!this._isPetting) this.drawFace(this.baseExpression);
+        });
     }
 
     // ─── Petting System (Multi-Phase Reactions) ───
@@ -799,10 +821,10 @@ export class Allang {
         const onComplete = () => {
             this._isDoingIdleBehavior = false;
             this._nextIdleTime = time + 6 + Math.random() * 12;
-            // Return to default pose
+            // Return to default pose & base expression (v9.3)
             gsap.to(this.group.rotation, { x: 0, y: 0, z: 0, duration: 1.5, ease: 'power1.inOut' });
             gsap.to(this.faceMesh.position, { x: 0, duration: 1 });
-            this.drawFace('default');
+            this.drawFace(this.baseExpression);
         };
 
         switch (choice) {
@@ -821,15 +843,15 @@ export class Allang {
             }
             case 'blink': {
                 // Quick blink (close eyes momentarily)
-                this.drawFace('tired');
+                this.drawFace('tired'); // Eyes closed look
                 gsap.delayedCall(0.3, () => {
-                    this.drawFace('default');
+                    this.drawFace(this.baseExpression);
                     gsap.delayedCall(0.8, () => {
                         // Sometimes double blink
                         if (Math.random() > 0.5) {
                             this.drawFace('tired');
                             gsap.delayedCall(0.2, () => {
-                                this.drawFace('default');
+                                this.drawFace(this.baseExpression);
                                 gsap.delayedCall(1, onComplete);
                             });
                         } else {
@@ -1052,10 +1074,19 @@ export class Allang {
     }
 
     roamRandomly(intensity = 1.0) {
+        if (this._isDoingIdleBehavior) return;
+        this._isDoingIdleBehavior = true; // Lock state
+
         this.targetPos.set(
             (Math.random() - 0.5) * this.roamBounds.x * intensity,
             (Math.random() - 0.5) * this.roamBounds.y * intensity + 0.5,
             (Math.random() - 0.5) * this.roamBounds.z * intensity
         );
+
+        // Unlock state after reaching destination
+        gsap.delayedCall(2.5, () => {
+            this._isDoingIdleBehavior = false;
+            if (!this._isPetting) this.drawFace(this.baseExpression);
+        });
     }
 }
