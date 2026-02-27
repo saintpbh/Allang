@@ -119,6 +119,12 @@ class App {
 
         if (locEnabled) await this.locationMgr.init();
         if (visEnabled) await this.visionMgr.start();
+
+        // Interaction Fallback for Presence
+        const trackInteraction = () => this.proactiveMgr.registerInteraction();
+        window.addEventListener('mousemove', trackInteraction, { passive: true });
+        window.addEventListener('click', trackInteraction, { passive: true });
+        window.addEventListener('keydown', trackInteraction, { passive: true });
     }
 
     _initProactive() {

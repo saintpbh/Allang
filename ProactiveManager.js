@@ -13,9 +13,13 @@ export class ProactiveManager extends EventTarget {
         this.lastUserMessageTime = Date.now();
         this.lastProactiveTime = 0;
         this.lastWeatherCode = null;
+        this.lastInteractionTime = Date.now(); // Mouse/Key activity
+        this.isFallbackMode = false; // True if camera is inactive
 
         // Settings
         this.silenceThreshold = 10 * 60 * 1000; // 10 minutes
+        this.fallbackSilenceThreshold = 3 * 60 * 1000; // 3 minutes when camera is off
+        this.awayThreshold = 5 * 60 * 1000; // 5 minutes of no input = 'Away' in fallback mode
         this.minProactiveInterval = 5 * 60 * 1000; // 5 minutes between proactive messages
         this.dailyLimit = 10;
         this.proactiveCountToday = 0;
@@ -25,18 +29,43 @@ export class ProactiveManager extends EventTarget {
 
     resetUserTimer() {
         this.lastUserMessageTime = Date.now();
+        this.lastInteractionTime = Date.now();
         this.proactiveCountToday = 0; // Simplified daily reset (on load)
+    }
+
+    registerInteraction() {
+        const now = Date.now();
+        const wasAwayFallback = this.isFallbackMode && (now - this.lastInteractionTime > this.awayThreshold);
+
+        this.lastInteractionTime = now;
+
+        if (wasAwayFallback) {
+            console.log('User returned (Input Fallback)');
+            this.trigger('사용자의 복귀 (입력 감지)');
+        }
     }
 
     update(time) {
         const now = Date.now();
 
         // Check 1: User Return (Event-driven)
-        if (this.visionMgr && this.visionMgr.isPresent && this._wasAway) {
-            this._wasAway = false;
-            this.trigger('User returned after being away');
-        } else if (this.visionMgr && !this.visionMgr.isPresent) {
-            this._wasAway = true;
+        const isVisionActive = this.visionMgr && this.visionMgr.isActive;
+        this.isFallbackMode = !isVisionActive;
+
+        if (isVisionActive) {
+            if (this.visionMgr.isPresent && this._wasAway) {
+                this._wasAway = false;
+                this.trigger('사용자의 복과');
+            } else if (!this.visionMgr.isPresent) {
+                this._wasAway = true;
+            }
+        } else {
+            // Fallback: Away detection based on lack of interaction
+            if (now - this.lastInteractionTime > this.awayThreshold) {
+                this._wasAway = true;
+            } else {
+                // Return is handled in registerInteraction()
+            }
         }
 
         // Check 2: Weather Change (Event-driven)
@@ -50,11 +79,13 @@ export class ProactiveManager extends EventTarget {
         // Check 3: Silence (Time-driven)
         const timeSinceLastUser = now - this.lastUserMessageTime;
         const timeSinceLastProactive = now - this.lastProactiveTime;
+        const activeThreshold = this.isFallbackMode ? this.fallbackSilenceThreshold : this.silenceThreshold;
+        const isPresent = isVisionActive ? this.visionMgr.isPresent : (now - this.lastInteractionTime < this.awayThreshold);
 
-        if (timeSinceLastUser > this.silenceThreshold &&
+        if (timeSinceLastUser > activeThreshold &&
             timeSinceLastProactive > this.minProactiveInterval &&
-            this.visionMgr.isPresent) {
-            this.trigger('Long silence / Check-in');
+            isPresent) {
+            this.trigger('오랜 침묵 / 안부 묻기');
         }
     }
 
